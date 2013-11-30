@@ -14,8 +14,6 @@ Func Terminate()
 
 Global $COLOR_DIFF = 10
 
-Global $POWER_LEVEL = 1
-
 
 Global $BTN_START_FIGHT[2] = [1075, 664]
 Global $BTN_DECK_OK[2] = [292, 431]
@@ -30,8 +28,22 @@ Global $BTN_END_GAME_ENABLED = 0x10282E
 
 
 Global $HERO[2] = [400, 400]
-Global $BTN_TAKE_CARD[2] = [400, 360]
+; POW, MAGIC, FORTUNE
+;Global $HERO_STATS_DEFAULT[3] = [2, 0, 1]; Inferno
+Global $HERO_STATS_DEFAULT[3] = [2, 1, 1]; Necro
+Global $DESIRED_STATS[3] = [6, 1, 1]; Inferno
+Global $HERO_STATS[3] = [0, 0, 0]
+
+
 Global $BTN_ADD_POW[2] = [400, 240]
+Global $BTN_ADD_MAG[2] = [400, 280]
+Global $BTN_ADD_FOR[2] = [400, 320]
+Global $BTN_TAKE_CARD[2] = [400, 360]
+
+Global $BTN_ADD_STAT[3] = [ $BTN_ADD_POW, $BTN_ADD_MAG, $BTN_ADD_FOR ]
+Global $STATS_STEPS[4] = [0, 1, 0, 1] 
+Global $STATS_STEPS_SIZE = 4
+Global $STATS_STEPS_CURRENT = 0
 
 ; 4 rows, 2 lines, x coord + y coord, color
 ;Wild cat deck -  Global $TROOP_SPOT[4][2][3] = [ [  [555, 283, 0x9BFB54], [664, 282, 0x407F37]  ], [  [549, 382, 0x73FB54], [662, 382, 0x5FF159]  ], [  [543, 489, 0x53C949], [661, 489, 0x5ED55A]  ], [  [537, 606, 0x57D651], [658, 606, 0x54D84F]  ] ]
@@ -54,7 +66,8 @@ Global $BTN_DAYLY_REWARD[2] = [979, 707]
 Global $BTN_DAYLY_REWARD_ENABLED = 0x182808
 
 
-Global $GREEN_CARD_OUTLINE = 0x89F746
+Global $GREEN_CARD_OUTLINE = 0x89F746 ; Works as DEFAULT
+;Global $GREEN_CARD_OUTLINE = 0xAEFB1F  ; Inferno
 Global $GREEN_CARD_OUTLINE2 = 0x33CC28
 Global $GREEN_FOR_ATTACK = 0x43A640
 
@@ -112,19 +125,43 @@ EndFunc
 ;~    Sleep(50)
 ;~ EndFunc
 
+Func Increase($stat) 
+   If $HERO_STATS[$stat] < $DESIRED_STATS[$stat] Then
+	  DoClick($BTN_ADD_STAT[$stat])
+	  $HERO_STATS[$stat] = $HERO_STATS[$stat] + 1
+	  ConsoleWrite ( "Increased " & $stat & " Cur: " & _ArrayToString($HERO_STATS, ",") & @CRLF)
+	  Return 1
+   EndIf
+   
+   Return 0
+EndFunc
+
 
 
 Func UseHero()
    DoClick($HERO)
    
-   If $POWER_LEVEL < 6 Then
-	  DoClick($BTN_ADD_POW)
-	  $POWER_LEVEL = $POWER_LEVEL + 1
+   Local $didIt = 0
+   
+   If $STATS_STEPS_CURRENT < $STATS_STEPS_SIZE Then ; try to increase stats in predefined order
+	  $didIt = Increase($STATS_STEPS[$STATS_STEPS_CURRENT])
+	  $STATS_STEPS_CURRENT = $STATS_STEPS_CURRENT + 1
+   EndIf
+   ; If the order is finished, or the stat is already at required level - do the usual way - go through stats starting from POW
+   
+   If $didIt Then
+	  ; We did the step
+   ElseIf Increase(0) Then
+	  ; POW++
+   ElseIf Increase(1) Then
+	  ; MAGIC++
+   ElseIf Increase(2) Then 
+	  ; FORTUNE++
    Else
 	  DoClick($BTN_TAKE_CARD)
-	  DoClick($BTN_ADD_POW)
+	  ClickQuick($BTN_ADD_POW)
    EndIf
-   
+  
 EndFunc
 
 Func FindFreeSpot()
@@ -166,17 +203,20 @@ EndFunc
 
 
 Func PlaceTroop()
-   Local $greenOutline = PixelSearch(485, 596, 26, 587, $GREEN_CARD_OUTLINE, 55)
+  ; Local $greenOutline = PixelSearch(485, 596, 26, 587, $GREEN_CARD_OUTLINE, 55)
+   Local $greenOutline = PixelSearch(26, 753, 485, 755, $GREEN_CARD_OUTLINE, 55) ; Trying for Inferno
    
    If @error Then
 	  ConsoleWrite ( "Looking for $GREEN_CARD_OUTLINE2" & @CRLF)
-	  $greenOutline = PixelSearch(485, 596, 26, 587, $GREEN_CARD_OUTLINE2, 55)
+	 ; $greenOutline = PixelSearch(485, 596, 26, 587, $GREEN_CARD_OUTLINE2, 55)
+	  $greenOutline = PixelSearch(26, 753, 485, 755, $GREEN_CARD_OUTLINE2, 55)
    EndIf
    
    
    If Not @error Then
 	  ConsoleWrite ( "Found green at " & $greenOutline[0] & ", " & $greenOutline[1] )
-	  Local $newCoords[2] = [$greenOutline[0] - 5, $greenOutline[1] + 50]
+	  ;Local $newCoords[2] = [$greenOutline[0] - 5, $greenOutline[1] + 50]
+	  Local $newCoords[2] = [$greenOutline[0] - 5, $greenOutline[1] - 50]
 	  DoClick($newCoords)
 	  
 	  Sleep(1500)
@@ -303,9 +343,14 @@ EndFunc
 	
 	If $SKIP_DECK_ONCE = 1 Then
 	  $SKIP_DECK_ONCE = 0
-	  Local $pow = InputBox("Hello", "Please enter power", 1);
-	  $POWER_LEVEL = Number($pow)
-	  ConsoleWrite ( "Got power: " & $pow & " became " & $POWER_LEVEL & @CRLF)
+	  Local $input = InputBox("Hello", "Please enter power, magic, fortune", _ArrayToString($HERO_STATS_DEFAULT, ","));
+	  Local $stats = StringSplit($input, ",")
+	  
+	  $HERO_STATS[0] = Number($stats[1])
+	  $HERO_STATS[1] = Number($stats[2])
+	  $HERO_STATS[2] = Number($stats[3])
+	  
+	  ConsoleWrite ( "Got $input: " & $input & " became " & _ArrayToString($HERO_STATS, ",") & @CRLF)
 	  Return 1
     EndIf
 	
@@ -320,7 +365,8 @@ Func Startit()
    ConsoleWrite ( "Started" & @CRLF)
    While 1
 	  Sleep(1000)
-	  $POWER_LEVEL = 1
+	  $STATS_STEPS_CURRENT = 0
+	  $HERO_STATS = $HERO_STATS_DEFAULT
 		DoClick($BTN_START_FIGHT)
 		Sleep(1000)
 		DoClick($BTN_START_FIGHT)
